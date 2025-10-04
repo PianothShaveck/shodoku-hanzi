@@ -73,7 +73,7 @@ onMounted(() => props.literal && loadSvg(props.literal));
 <style scoped>
 .component-item { display: inline-flex; align-items: center; gap: 0.6rem; text-decoration: none; color: inherit; }
 .mini { background: var(--background-strong); width: 2.8rem; height: 2.8rem; border-radius: 6px; display: inline-block; flex-shrink: 0; }
-.mini-strokes :deep(path) { stroke: #fff; stroke-width: 6px; stroke-linecap: round; stroke-linejoin: round; fill: none; }
+.mini-strokes :deep(path) { stroke: #fff; stroke-width: 2px; stroke-linecap: round; stroke-linejoin: round; fill: none; }
 .mini-fallback { display: inline-flex; align-items: center; justify-content: center; }
 .mini-fallback .text { font-size: 1.6rem; line-height: 1; }
 .label { font-size: 1.2rem; }

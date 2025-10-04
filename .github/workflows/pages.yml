@@ -30,17 +30,41 @@ jobs:
       - name: Install dependencies
         run: npm ci
 
-      # GENERA I DATI (scarica sorgenti, crea assets.db, produce JSON/SVG in public/)
+      # 1) Ripristina eventuale cache dei DATI già generati
+      - name: Cache built data
+        id: cache-data
+        uses: actions/cache@v4
+        with:
+          path: |
+            public/data
+            public/kanjivg
+          # Chiave abbastanza stabile: cambia se cambiano gli script o i file sorgente in assets/
+          key: data-${{ hashFiles('scripts/**/*.js', 'assets/hsk30.txt', 'assets/frequency.csv') }}
+
+      # 2) Se la cache "data" NON è hit, ricostruiamo tutto
+      - name: Cache datasets (MakeMeAHanzi/CC-CEDICT)
+        id: cache-datasets
+        if: steps.cache-data.outputs.cache-hit != 'true'
+        uses: actions/cache@v4
+        with:
+          path: |
+            assets/makemeahanzi
+            assets/cedict_ts.u8
+          key: datasets-${{ hashFiles('scripts/fetch-assets.js') }}
+
       - name: Fetch upstream datasets
+        if: steps.cache-data.outputs.cache-hit != 'true'
         run: node scripts/fetch-assets.js
 
       - name: Build local database
+        if: steps.cache-data.outputs.cache-hit != 'true'
         run: |
           node scripts/populate-db-kanji.js
           node scripts/populate-db-words.js
           node scripts/populate-db-words-pinyin.js
 
       - name: Build content assets
+        if: steps.cache-data.outputs.cache-hit != 'true'
         run: |
           node scripts/build-assets-kanji.js
           node scripts/build-assets-kanji-vocab.js
@@ -52,20 +76,17 @@ jobs:
           node scripts/build-assets-frequency-lists.js
           node scripts/build-assets-words.js
 
+      # 3) Build app
       - name: Build site
         run: npm run build
         env:
-          # BASE_PATH deve restare /repo-name/ su Project Pages
           BASE_PATH: "/${{ github.event.repository.name }}/"
 
       - name: List dist (debug)
         run: |
-          echo "---- dist root ----"
-          ls -la dist
-          echo "---- data/kanji-v1 sample ----"
-          ls -la dist/data/kanji-v1 | head -n 20 || true
-          echo "---- kanjivg/kanji sample ----"
-          ls -la dist/kanjivg/kanji | head -n 20 || true
+          echo "---- dist root ----"; ls -la dist
+          echo "---- data/kanji-v1 ----"; ls -la dist/data/kanji-v1 | head -n 10 || true
+          echo "---- kanjivg/kanji ----"; ls -la dist/kanjivg/kanji | head -n 10 || true
 
       - name: Upload Pages Artifact
         uses: actions/upload-pages-artifact@v3
