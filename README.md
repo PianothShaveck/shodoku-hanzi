@@ -6,8 +6,8 @@ This fork adapts Shodoku from Japanese Kanji to Mandarin Chinese (Hanzi). It use
 
 - Make Me A Hanzi for stroke paths and decomposition (radicals/components)
 - CC‑CEDICT for words, pinyin, and definitions
-- Your HSK 3.0 character list (hsk30.txt)
-- Your character frequency list (frequency.csv)
+- HSK 3.0 character list (hsk30.txt)
+- Character frequency list (frequency.csv)
 
 It keeps the same web app and asset formats as the original, so the UI, SRS, and offline behavior continue to work.
 
