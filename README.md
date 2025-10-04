@@ -17,13 +17,6 @@ It keeps the same web app and asset formats as the original, so the UI, SRS, and
 - macOS/Linux/WSL recommended
 - Disk space ~3–5 GB for temporary assets
 
-## Prepare local assets
-
-Place your two input files in the assets directory:
-
-- assets/hsk30.txt  (the HSK 3.0 character list you provided)
-- assets/frequency.csv  (your frequency list, CSV as provided)
-
 ## Build the data
 
 1) Download data (Make Me A Hanzi + CC‑CEDICT):
@@ -80,11 +73,3 @@ npm run dev
 ```bash
 npm run build
 ```
-
-
-## Deploy to GitHub Pages (same as original)
-
-1) Commit the built assets in `public/` (we ship small JSON split files, so this is OK).
-2) Push to a GitHub repository with Pages enabled.
-3) Set Pages “Build and deployment” Source to “Deploy from a branch” and select the branch (typically main) and root.
-4) If deploying to a project site (username.github.io/repo), keep 404.html and index.html SPA redirect scripts as they are.
