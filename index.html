@@ -3,9 +3,9 @@
   <head>
     <meta charset="UTF-8" />
     <title>Shodoku (Hanzi)</title>
-    <link rel="icon" href="/favicon.ico" sizes="32x32" />
-    <link rel="icon" href="/icon.svg" type="image/svg+xml" />
-    <link rel="apple-touch-icon" href="/apple-touch-icon.png" />
+    <link rel="icon" href="favicon.ico" sizes="32x32" />
+    <link rel="icon" href="icon.svg" type="image/svg+xml" />
+    <link rel="apple-touch-icon" href="apple-touch-icon.png" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
 
     <meta
@@ -17,33 +17,24 @@
       content="hanzi, chinese, mandarin, pinyin, character components, spaced repetition, SRS"
     />
 
+    <!-- Open Graph (optional; update URL once your site is live) -->
     <meta property="og:title" content="Shodoku (Hanzi)" />
     <meta property="og:url" content="https://pianothshaveck.github.io/shodoku-hanzi/" />
     <meta
       property="og:description"
       content="Learn Hanzi by reading and writing with spaced repetition and component insights."
     />
-    <meta property="og:image" content="https://shodoku.app/icon-mask.png" />
+    <meta property="og:image" content="https://pianothshaveck.github.io/shodoku-hanzi/icon-mask.png" />
     <meta property="og:image:type" content="image/png" />
     <meta property="og:image:width" content="512" />
     <meta property="og:image:height" content="512" />
     <meta
       property="og:image:alt"
-      content="The Hanzi character for write (书/書) on a soft gradient background."
+      content="The Hanzi character for write on a soft gradient background."
     />
 
-    <!-- Start Single Page Apps for GitHub Pages -->
+    <!-- GitHub Pages SPA redirect (rafgraph) -->
     <script type="text/javascript">
-      // Single Page Apps for GitHub Pages
-      // MIT License
-      // https://github.com/rafgraph/spa-github-pages
-      // This script checks to see if a redirect is present in the query string,
-      // converts it back into the correct url and adds it to the
-      // browser's history using window.history.replaceState(...),
-      // which won't cause the browser to attempt to load the new url.
-      // When the single page app is loaded further down in this file,
-      // the correct url will be waiting in the browser's history for
-      // the single page app to route accordingly.
       (function (l) {
         if (l.search[1] === "/") {
           const decoded = l.search
@@ -53,19 +44,15 @@
               return s.replace(/~and~/g, "&");
             })
             .join("?");
-          window.history.replaceState(
-            null,
-            null,
-            l.pathname.slice(0, -1) + decoded + l.hash,
-          );
+          window.history.replaceState(null, null, l.pathname.slice(0, -1) + decoded + l.hash);
         }
       })(window.location);
     </script>
-    <!-- End Single Page Apps for GitHub Pages -->
   </head>
   <body>
     <div id="app"></div>
     <div id="app:dialogs" class="dialogs-container"></div>
+    <!-- dev uses /src/main.ts; build will rewrite this to a hashed bundle -->
     <script type="module" src="/src/main.ts"></script>
   </body>
 </html>
