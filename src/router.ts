@@ -40,7 +40,9 @@ export function wordRoute(wordId: number): RouteLocationRaw {
 }
 
 export const router = createRouter({
-  history: createWebHistory(),
+  // IMPORTANT: history with base injected by Vite (works on GitHub Pages subpath)
+  history: createWebHistory(import.meta.env.BASE_URL),
+
   scrollBehavior(to, from, savedPosition) {
     if (to.path === from.path) {
       return;
@@ -59,6 +61,7 @@ export const router = createRouter({
       return { el: appMainEl };
     }
   },
+
   routes: [
     {
       path: "/",
