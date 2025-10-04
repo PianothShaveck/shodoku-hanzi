@@ -23,15 +23,16 @@ const currentYear = new Date().getFullYear();
       </ul>
     </nav>
 
-    <small class="copyright"
-      >© 2024-{{ currentYear }} Rúnar Berg Baugsson Sigríðarson.
+    <small class="copyright">
+      © 2024-{{ currentYear }}
+      Rúnar Berg Baugsson Sigríðarson &amp; Aldo Roberto Pessolano.
       <a
         href="https://github.com/runarberg/shodoku/blob/main/LICENSE.txt"
         target="_blank"
         class="link"
         >MIT License</a
-      ></small
-    >
+      >
+    </small>
   </footer>
 </template>
 
