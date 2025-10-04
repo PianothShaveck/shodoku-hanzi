@@ -1,12 +1,15 @@
 import { hasKanji } from "../helpers/text.ts";
 
 const LIMIT = 6;
-
 const UNIT_SEP = "\u{241f}";
 const RECORD_SEP = "\u{241e}";
 const GROUP_SEP = "\u{241d}";
 
-const fetchingIndex = fetch("/data/index/kanji-v1.usv").then((r) => r.text());
+const BASE = (import.meta as any).env?.BASE_URL?.replace(/\/+$/, "") || "";
+
+const fetchingIndex = fetch(`${BASE}/data/index/kanji-v1.usv`).then((r) =>
+  r.text(),
+);
 
 export type KanjiSearchResult = {
   id: number;
@@ -16,7 +19,7 @@ export type KanjiSearchResult = {
   meanings: string[];
 };
 
-function includes(haystack, needle) {
+function includes(haystack: string, needle: string) {
   return haystack.toLowerCase().includes(needle.toLowerCase());
 }
 
@@ -35,9 +38,7 @@ async function find(search: { pinyin?: string; en?: string }): Promise<KanjiSear
 
     if (ch === UNIT_SEP) {
       if (!matchContent) {
-        // records within a group:
-        // 0 literal, 1 kun list, 2 on list, 3 meanings
-        let unitContent;
+        let unitContent: string | undefined;
         if (recordNumber === 1 && search.pinyin) {
           unitContent = index.slice(unitStart + len, i);
           if (includes(unitContent.replaceAll(".", " "), search.pinyin)) {
@@ -97,19 +98,15 @@ addEventListener("message", async (event: MessageEvent<string>) => {
   let results: KanjiSearchResult[] = [];
 
   if (hasKanji(phrase)) {
-    // nothing to do; the literal itself shows in dictionary results
     results = [];
   } else if (/^[a-zA-Z0-9\s:;'`,.-]+$/.test(phrase)) {
-    // likely pinyin or English; search pinyin first, then English
     results = await find({ pinyin: phrase });
     if (results.length < LIMIT) {
       const extra = await find({ en: phrase });
-      // de-dup
       const seen = new Set(results.map((r) => r.id));
       for (const e of extra) if (!seen.has(e.id)) results.push(e);
     }
   } else {
-    // default to English meanings
     results = await find({ en: phrase });
   }
 

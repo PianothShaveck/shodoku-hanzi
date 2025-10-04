@@ -4,6 +4,16 @@ import { enumerate, groupBy, toArray } from "yta/sync";
 const UNIT_SEP = "\u{241f}";
 const RECORD_SEP = "\u{241e}";
 
+const BASE = (import.meta as any).env?.BASE_URL?.replace(/\/+$/, "") || "";
+
+const fetchingKanjiRadicals = fetch(`${BASE}/data/index/kanji-radicals-v1.usv`).then(
+  (response) => response.text(),
+);
+
+const fetchingRadicalsKanji = fetch(`${BASE}/data/index/radicals-kanji-v1.usv`).then(
+  (response) => response.text(),
+);
+
 type AllRadicalsMessage = {
   type: "all-radicals";
   allRadicals: Map<number, string[]>;
@@ -16,14 +26,6 @@ type KanjiSelectionMessage = {
 };
 
 export type ComponentPickerMessage = AllRadicalsMessage | KanjiSelectionMessage;
-
-const fetchingKanjiRadicals = fetch("/data/index/kanji-radicals-v1.usv").then(
-  (response) => response.text(),
-);
-
-const fetchingRadicalsKanji = fetch("/data/index/radicals-kanji-v1.usv").then(
-  (response) => response.text(),
-);
 
 function* readUSVRecords(source: string): Iterable<Iterable<string>> {
   const charIter = source[Symbol.iterator]();

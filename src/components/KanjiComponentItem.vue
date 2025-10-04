@@ -9,6 +9,8 @@ const props = defineProps<{
   parts?: KanjiComponent[];
 }>();
 
+const BASE = import.meta.env.BASE_URL.replace(/\/+$/, "");
+
 const svgEl = ref<SVGSVGElement | null>(null);
 const groupContainer = ref<SVGGElement | null>(null);
 const hasStrokes = ref(false);
@@ -18,7 +20,7 @@ async function loadSvg(char: string) {
   hasStrokes.value = false;
   const cp = [...char][0].codePointAt(0) ?? 0;
   const hex = cp.toString(16).padStart(5, "0");
-  const url = `/kanjivg/kanji/${hex}.svg`;
+  const url = `${BASE}/kanjivg/kanji/${hex}.svg`;
 
   try {
     const svgText = await fetch(url).then((r) => (r.ok ? r.text() : ""));
@@ -30,17 +32,11 @@ async function loadSvg(char: string) {
 
     const parser = new DOMParser();
     const doc = parser.parseFromString(svgText, "image/svg+xml");
-
-    // Cast the root <svg> to SVGSVGElement to read viewBox without TS errors
     const svgRoot = doc.documentElement as unknown as SVGSVGElement;
     const vb = svgRoot.viewBox?.baseVal;
-    if (vb) {
-      viewBox.value = `${vb.x},${vb.y},${vb.width},${vb.height}`;
-    } else {
-      viewBox.value = "0,0,1024,1024";
-    }
+    if (vb) viewBox.value = `${vb.x},${vb.y},${vb.width},${vb.height}`;
+    else viewBox.value = "0,0,1024,1024";
 
-    // Our builder puts the main strokes in the first <g>
     const g = svgRoot.querySelector("g") as SVGGElement | null;
     if (!g) {
       hasStrokes.value = false;
@@ -57,11 +53,7 @@ async function loadSvg(char: string) {
   }
 }
 
-watch(
-  () => props.literal,
-  (ch) => ch && loadSvg(ch),
-  { immediate: true },
-);
+watch(() => props.literal, (ch) => ch && loadSvg(ch), { immediate: true });
 onMounted(() => props.literal && loadSvg(props.literal));
 </script>
 
@@ -79,43 +71,10 @@ onMounted(() => props.literal && loadSvg(props.literal));
 </template>
 
 <style scoped>
-.component-item {
-  display: inline-flex;
-  align-items: center;
-  gap: 0.6rem;
-  text-decoration: none;
-  color: inherit;
-}
-
-.mini {
-  background: var(--background-strong);
-  width: 2.8rem;
-  height: 2.8rem;
-  border-radius: 6px;
-  display: inline-block;
-  flex-shrink: 0;
-}
-
-.mini-strokes :deep(path) {
-  stroke: #fff;
-  stroke-width: 2px;
-  stroke-linecap: round;
-  stroke-linejoin: round;
-  fill: none;
-}
-
-.mini-fallback {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-}
-
-.mini-fallback .text {
-  font-size: 1.6rem;
-  line-height: 1;
-}
-
-.label {
-  font-size: 1.2rem;
-}
+.component-item { display: inline-flex; align-items: center; gap: 0.6rem; text-decoration: none; color: inherit; }
+.mini { background: var(--background-strong); width: 2.8rem; height: 2.8rem; border-radius: 6px; display: inline-block; flex-shrink: 0; }
+.mini-strokes :deep(path) { stroke: #fff; stroke-width: 6px; stroke-linecap: round; stroke-linejoin: round; fill: none; }
+.mini-fallback { display: inline-flex; align-items: center; justify-content: center; }
+.mini-fallback .text { font-size: 1.6rem; line-height: 1; }
+.label { font-size: 1.2rem; }
 </style>

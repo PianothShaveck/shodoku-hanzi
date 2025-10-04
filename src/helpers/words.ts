@@ -4,6 +4,8 @@ import { Word, WordReading, WordWriting } from "../types.ts";
 import { useHighKanjiReadingProficiency } from "./fsrs.ts";
 import { isKanji } from "./text.ts";
 
+const BASE = import.meta.env.BASE_URL.replace(/\/+$/, "");
+
 export function useWord(
   wordId: MaybeRefOrGetter<number | null>,
 ): Ref<Word | null> {
@@ -17,7 +19,7 @@ export function useWord(
         return;
       }
 
-      const response = await fetch(`/data/words-v1/${id}.json`);
+      const response = await fetch(`${BASE}/data/words-v1/${id}.json`);
       const data = await response.json();
 
       wordInfo.value = data;
@@ -41,7 +43,7 @@ export function useWordSetenceIds(
         return;
       }
 
-      const response = await fetch(`/data/words-sentences-v1/${id}.json`);
+      const response = await fetch(`${BASE}/data/words-sentences-v1/${id}.json`);
       if (!response.ok) {
         sentenceIds.value = [];
         return;

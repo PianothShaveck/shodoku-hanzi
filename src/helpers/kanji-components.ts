@@ -2,11 +2,12 @@ import { MaybeRefOrGetter, Ref, ref, toValue, watch } from "vue";
 
 import { KanjiComponentInfo } from "../types.ts";
 
+const BASE = import.meta.env.BASE_URL.replace(/\/+$/, "");
+
 function toHex(literal: string): string {
   if (literal.startsWith("CDP-")) {
     return literal;
   }
-
   const codepoint = literal.codePointAt(0) ?? 0;
   return codepoint.toString(16).padStart(5, "0");
 }
@@ -33,7 +34,7 @@ export function useKanjiComponent(
       }
 
       const hex = toHex(value);
-      const response = await fetch(`/data/components-v1/${hex}.json`);
+      const response = await fetch(`${BASE}/data/components-v1/${hex}.json`);
       const data = await response.json();
 
       setKanjiComponent(data);

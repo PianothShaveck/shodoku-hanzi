@@ -1,12 +1,14 @@
 import { hasKanji } from "../helpers/text.ts";
 
 const LIMIT = 20;
-
 const UNIT_SEP = "\u{241f}";
 const RECORD_SEP = "\u{241e}";
 const GROUP_SEP = "\u{241d}";
 
-const fetchingIndex = fetch("/data/index/words-v1.usv").then((r) => r.text());
+const BASE = (import.meta as any).env?.BASE_URL?.replace(/\/+$/, "") || "";
+const fetchingIndex = fetch(`${BASE}/data/index/words-v1.usv`).then((r) =>
+  r.text(),
+);
 
 function isInParams(heystack: string, needle: string): boolean {
   const openParam = heystack.indexOf("(");
@@ -37,16 +39,16 @@ async function findWords(search: {
   let record = 0;
   let unitStart = 0;
   let groupStart = 0;
-  let matchContent = null;
+  let matchContent: string | null = null;
 
   for (const ch of index) {
     const len = ch.length;
 
     if (ch === UNIT_SEP) {
       if (!matchContent) {
-        let unitContent;
-        let haystack;
-        let needle;
+        let unitContent: string | undefined;
+        let haystack: string | undefined;
+        let needle: string | null | undefined;
 
         if (search.reading && record === 1) {
           unitContent = index.slice(unitStart, i);
@@ -75,6 +77,7 @@ async function findWords(search: {
       unitStart = i + len;
     } else if (ch === RECORD_SEP) {
       record += 1;
+
       unitStart = i + len;
     } else if (ch === GROUP_SEP) {
       if (matchContent) {
@@ -102,6 +105,7 @@ async function findWords(search: {
       }
 
       record = 0;
+
       unitStart = i + len;
       groupStart = i + len;
     }
@@ -114,9 +118,9 @@ addEventListener("message", async (event: MessageEvent<string>) => {
   const phrase = event.data.trim();
   if (!phrase) return;
 
-  const searchWriting = hasKanji(phrase);              // 汉字
-  const searchReading = /^[a-zA-Z0-9\s:;'`,.-]+$/.test(phrase); // pinyin-ish
-  const searchGlossary = !searchWriting && !searchReading;       // English
+  const searchWriting = hasKanji(phrase);
+  const searchReading = !searchWriting && /^[a-zA-Z0-9\s:;'`,.-]+$/.test(phrase);
+  const searchGlossary = !searchWriting && !searchReading;
 
   findWords({
     phrase,
