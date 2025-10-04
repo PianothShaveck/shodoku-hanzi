@@ -99,14 +99,28 @@ function resumeAnimation() {
   animationPaused.value = false;
 }
 
+function flipPathY(d: string, height: number): string {
+  // I nostri path sono “M x y L x y L …” (solo M e L)
+  // Inverti ogni coppia (x,y) -> (x, height - y)
+  return d.replace(/([ML])\s*([0-9.]+)\s+([0-9.]+)/gi, (_m, cmd, xs, ys) => {
+    const x = Number(xs);
+    const y = Number(ys);
+    const fy = height - y;
+    return `${cmd} ${x} ${fy}`;
+  });
+}
+
 function skipForward() {
-  const path = strokes.value[practiceStrokes.length]?.getAttribute("d");
+  const idx = practiceStrokes.length;
+  const pathEl = strokes.value[idx] as SVGPathElement | undefined;
+  if (!pathEl) return;
 
-  if (!path) {
-    return;
-  }
+  const raw = pathEl.getAttribute("d") || "";
+  const vb = viewBox.value.split(",").map((v) => Number(v.trim()));
+  const h = vb[3] || 1024;
 
-  practiceStrokes.push(path);
+  const flipped = flipPathY(raw, h);
+  practiceStrokes.push(flipped);
 }
 
 function showHint(n = practiceStrokes.length) {

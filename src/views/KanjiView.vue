@@ -32,7 +32,7 @@ provideKanjiVG(hex);
 </script>
 
 <template>
-  <article v-if="kanji" class="kanji-card">
+    <article v-if="kanji" class="kanji-card">
     <KanjiTitle class="title" :kanji="kanji">
       <template #actions>
         <KanjiExploreActions :kanji="kanji" />
@@ -41,7 +41,7 @@ provideKanjiVG(hex);
 
     <KanjiReadings class="readings" :kanji="kanji" />
     <KanjiStrokes class="strokes" :kanji="kanji" />
-    <KanjiComponents class="components" />
+    <KanjiComponents class="components" :literal="kanji.literal" />
     <KanjiWordList v-if="kanjiVocab" class="words" :kanji-vocab="kanjiVocab" />
   </article>
 </template>

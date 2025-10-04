@@ -1,21 +1,38 @@
+import fs from "node:fs/promises";
 import { createReadStream } from "node:fs";
 import { fileURLToPath } from "node:url";
+import readline from "node:readline";
 
 import Database from "better-sqlite3";
-import sax from "sax";
+
+/**
+ * Resolve a Make Me A Hanzi data file that may live either at:
+ *   assets/makemeahanzi/<root>/<name>
+ * or
+ *   assets/makemeahanzi/<root>/data/<name>
+ */
+async function resolveMmhzFile(name) {
+  const root = fileURLToPath(import.meta.resolve("../assets/makemeahanzi"));
+  const entries = await fs.readdir(root);
+  const dir = entries.find((n) => /^makemeahanzi-/.test(n));
+  if (!dir) throw new Error("makemeahanzi root not found");
+  const base = `${root}/${dir}`;
+  const candidates = [`${base}/${name}`, `${base}/data/${name}`];
+  for (const p of candidates) {
+    try {
+      await fs.access(p);
+      return p;
+    } catch {
+      // try next
+    }
+  }
+  throw new Error(`Cannot find ${name} under ${base} or ${base}/data`);
+}
 
 const db = new Database(fileURLToPath(import.meta.resolve("../assets.db")));
 db.pragma("journal_mode = WAL");
 
-function* enumerate(iterable) {
-  let i = 0;
-  for (const item of iterable) {
-    yield [i, item];
-
-    i += 1;
-  }
-}
-
+// Recreate tables (schema identical to original project)
 db.exec(`DROP TABLE IF EXISTS kanji`);
 db.exec(`
   CREATE TABLE kanji (
@@ -64,123 +81,191 @@ const insertKanjiMeaning = db.prepare(`
   VALUES (@codepoint, @meaning, @seq)
 `);
 
-const insertCharacter = db.transaction(
-  (kanji, onReadings, kunReadings, meanings) => {
-    insertKanji.run(kanji);
-
-    for (const [seq, reading] of enumerate(onReadings)) {
-      insertKanjiReading.run({
-        codepoint: kanji.codepoint,
-        type: "on",
-        reading,
-        seq,
-      });
-    }
-
-    for (const [seq, reading] of enumerate(kunReadings)) {
-      insertKanjiReading.run({
-        codepoint: kanji.codepoint,
-        type: "kun",
-        reading,
-        seq,
-      });
-    }
-
-    for (const [seq, meaning] of enumerate(meanings)) {
-      insertKanjiMeaning.run({ codepoint: kanji.codepoint, meaning, seq });
-    }
-  },
-);
-
-const readStream = createReadStream(
-  new URL("../assets/kanjidic2.xml", import.meta.url),
-  { encoding: "utf8" },
-);
-
-const xmlStream = sax.createStream(true);
-
+// Load radicals map (literal -> radical number) from assets/radicals.csv
+const radicalsMap = new Map();
 {
-  let tag = null;
-  let literal = null;
-  let codepoint = null;
-  let radical = null;
-  let strokeCount = null;
-  let freq = null;
-  let grade = null;
-  let onReadings = null;
-  let kunReadings = null;
-  let meanings = null;
-
-  xmlStream.on("opentag", (opentag) => {
-    tag = opentag;
-
-    if (tag.name === "character") {
-      onReadings = [];
-      kunReadings = [];
-      meanings = [];
+  const url = new URL("../assets/radicals.csv", import.meta.url);
+  const txt = await fs.readFile(url, "utf8");
+  for (const line of txt.split(/\r?\n/)) {
+    if (!line.trim()) continue;
+    const [numStr, chars] = line.split(",");
+    const num = Number.parseInt(numStr, 10);
+    if (!Number.isFinite(num)) continue;
+    for (const ch of chars ?? "") {
+      if (ch) radicalsMap.set(ch, num);
     }
-  });
-
-  xmlStream.on("closetag", (tagName) => {
-    tag = null;
-
-    if (tagName === "character") {
-      const kanji = {
-        codepoint,
-        literal,
-        radical,
-        grade,
-        freq,
-        strokeCount,
-      };
-
-      insertCharacter(kanji, onReadings, kunReadings, meanings);
-
-      literal = null;
-      codepoint = null;
-      radical = null;
-      strokeCount = null;
-      freq = null;
-      grade = null;
-      onReadings = null;
-      kunReadings = null;
-      meanings = null;
-    }
-  });
-
-  xmlStream.on("text", (text) => {
-    if (!tag) {
-      return;
-    }
-
-    if (tag.name === "literal") {
-      literal = text;
-    } else if (tag.name === "grade") {
-      grade = text;
-    } else if (tag.name === "freq") {
-      freq = Number.parseInt(text);
-    } else if (tag.name === "stroke_count") {
-      strokeCount = Number.parseInt(text);
-    } else if (tag.name === "cp_value") {
-      if (tag.attributes.cp_type === "ucs") {
-        codepoint = Number.parseInt(text, 16);
-      }
-    } else if (tag.name === "rad_value") {
-      if (tag.attributes.rad_type === "classical") {
-        radical = Number.parseInt(text);
-      }
-    } else if (tag.name === "reading") {
-      if (tag.attributes.r_type === "ja_on") {
-        onReadings.push(text);
-      } else if (tag.attributes.r_type === "ja_kun") {
-        kunReadings.push(text);
-      }
-    } else if (tag.name === "meaning") {
-      if (!tag.attributes.m_lang) {
-        meanings.push(text);
-      }
-    }
-  });
+  }
 }
 
-readStream.pipe(xmlStream);
+// Stroke data from Make Me A Hanzi graphics.txt
+const mmhzGraphics = new Map(); // char -> { strokes: [] }
+{
+  const path = await resolveMmhzFile("graphics.txt");
+  const rl = readline.createInterface({
+    input: createReadStream(path, { encoding: "utf8" }),
+    crlfDelay: Infinity,
+  });
+  for await (const line of rl) {
+    if (!line.trim()) continue;
+    const obj = JSON.parse(line);
+    const ch = obj.character;
+    mmhzGraphics.set(ch, obj);
+  }
+}
+
+// Dictionary from Make Me A Hanzi: pinyin, definition, radical char
+const mmhzDict = new Map(); // char -> { definition?: string, pinyin?: string[], radical?: string }
+{
+  const path = await resolveMmhzFile("dictionary.txt");
+  const rl = readline.createInterface({
+    input: createReadStream(path, { encoding: "utf8" }),
+    crlfDelay: Infinity,
+  });
+  for await (const line of rl) {
+    if (!line.trim()) continue;
+    const obj = JSON.parse(line);
+    const ch = obj.character;
+    const entry = {
+      definition: obj.definition,
+      pinyin: obj.pinyin,
+      radical: obj.radical,
+    };
+    mmhzDict.set(ch, entry);
+  }
+}
+
+// CEDICT single-character entries to enrich pinyin + meanings
+const cedictSingle = new Map(); // char -> { pinyin: Set<string>, meanings: string[] }
+{
+  const url = new URL("../assets/cedict_ts.u8", import.meta.url);
+  const rl = readline.createInterface({
+    input: createReadStream(url, { encoding: "utf8" }),
+    crlfDelay: Infinity,
+  });
+  for await (const line of rl) {
+    if (!line || line.startsWith("#")) continue;
+    // trad simp [PINYIN] /m1/m2/...
+    const m = line.match(/^(\S+)\s+(\S+)\s+\[([^\]]+)\]\s+\/(.+?)\/\s*$/);
+    if (!m) continue;
+    const [, trad, simp, py, defsRaw] = m;
+    const defs = defsRaw.split("/").map((s) => s.trim()).filter(Boolean);
+    const pushChar = (c) => {
+      if ([...c].length !== 1) return;
+      const prev =
+        cedictSingle.get(c) ?? ({ pinyin: new Set(), meanings: [] });
+      prev.pinyin.add(py);
+      for (const d of defs) {
+        if (prev.meanings.length < 5) prev.meanings.push(d);
+      }
+      cedictSingle.set(c, prev);
+    };
+    pushChar(trad);
+    pushChar(simp);
+  }
+}
+
+// Frequency ranking from your CSV
+const freqRank = new Map(); // char -> rank
+{
+  const url = new URL("../assets/frequency.csv", import.meta.url);
+  const rl = readline.createInterface({
+    input: createReadStream(url, { encoding: "utf8" }),
+    crlfDelay: Infinity,
+  });
+  for await (const line of rl) {
+    if (!line || line.startsWith("/*")) continue;
+    const parts = line.split(",");
+    if (parts.length < 2) continue;
+    const rank = Number.parseInt(parts[0], 10);
+    const ch = parts[1]?.trim();
+    if (Number.isFinite(rank) && ch && [...ch].length === 1) {
+      freqRank.set(ch, rank);
+    }
+  }
+}
+
+// HSK 3.0 list (characters), include them all
+const hskChars = new Set();
+{
+  const url = new URL("../assets/hsk30.txt", import.meta.url);
+  const txt = await fs.readFile(url, "utf8");
+  for (const line of txt.split(/\r?\n/)) {
+    if (!line || line.startsWith("#") || /汉字表/.test(line)) continue;
+    const m = line.match(/^\s*\d+\s+(\S)\s*$/);
+    if (m) hskChars.add(m[1]);
+  }
+}
+
+// Universe of chars to insert
+const chars = new Set([
+  ...mmhzGraphics.keys(),
+  ...cedictSingle.keys(),
+  ...hskChars,
+]);
+
+// Insert all rows
+const toCode = (ch) => ch.codePointAt(0) ?? 0;
+
+for (const ch of chars) {
+  const codepoint = toCode(ch);
+  const graphics = mmhzGraphics.get(ch);
+  const dict = mmhzDict.get(ch);
+  const ced = cedictSingle.get(ch);
+
+  const strokeCount = graphics?.strokes?.length ?? null;
+
+  // Try to identify a radical number:
+  // - prefer the radical literal that MMHZ dictionary gives (e.g. "氵")
+  // - else try direct mapping on the char itself
+  let radicalNumber = null;
+  if (dict?.radical && radicalsMap.has(dict.radical)) {
+    radicalNumber = radicalsMap.get(dict.radical);
+  } else if (radicalsMap.has(ch)) {
+    radicalNumber = radicalsMap.get(ch);
+  }
+
+  const freq = freqRank.get(ch) ?? null;
+
+  insertKanji.run({
+    codepoint,
+    literal: ch,
+    radical: radicalNumber ?? null,
+    grade: null,
+    freq,
+    strokeCount,
+  });
+
+  // readings: store pinyin in "on" to minimize front-end changes
+  {
+    const pinyins = new Set();
+    if (Array.isArray(dict?.pinyin)) {
+      for (const p of dict.pinyin) if (p) pinyins.add(p);
+    }
+    if (ced?.pinyin) for (const p of ced.pinyin) pinyins.add(p);
+
+    let seq = 0;
+    for (const py of pinyins) {
+      seq += 1;
+      insertKanjiReading.run({
+        codepoint,
+        type: "on",
+        reading: py,
+        seq,
+      });
+    }
+  }
+
+  // meanings: prefer CEDICT (first few), else MMHZ definition
+  {
+    const meanings = [];
+    if (ced?.meanings?.length) meanings.push(...ced.meanings);
+    else if (dict?.definition) meanings.push(dict.definition);
+    if (meanings.length === 0) meanings.push("—");
+
+    let seq = 0;
+    for (const m of meanings) {
+      seq += 1;
+      insertKanjiMeaning.run({ codepoint, meaning: m, seq });
+    }
+  }
+}

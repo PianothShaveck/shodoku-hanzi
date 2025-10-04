@@ -1,59 +1,69 @@
 import { Deck } from "../types.ts";
 
 export function deckLabel(deck: Deck): string {
-  if (deck.category === "genki") {
-    return `Genki ${deck.label}`;
+  if (deck.category === "hsk") {
+    return deck.label;
   }
-
-  if (deck.category === "basic-kanji") {
-    return `Basic Kanji ${deck.label.replace("Chapter", "ch.")}`;
+  if (deck.category === "freq") {
+    return `Frequency ${deck.label}`;
   }
-
   return deck.label;
 }
 
 export function categoryLabel(name: string): string {
-  if (name === "jouyou") {
-    return "Jōyō";
-  }
-
+  if (name === "hsk") return "HSK";
+  if (name === "freq") return "Frequency";
   return name;
 }
 
-export const jlptDecks = [
+// HSK 1..6 singoli + 7–9 combinati (da hsk-07-09.csv)
+export const hskDecks = [
   {
-    name: "jlpt-n5",
-    label: "JLPT N5",
+    name: "hsk-01",
+    label: "HSK Level 1",
+    priority: 1,
+    content: "/data/kanji-lists/hsk-01.csv",
+  },
+  {
+    name: "hsk-02",
+    label: "HSK Level 2",
+    priority: 2,
+    content: "/data/kanji-lists/hsk-02.csv",
+  },
+  {
+    name: "hsk-03",
+    label: "HSK Level 3",
+    priority: 3,
+    content: "/data/kanji-lists/hsk-03.csv",
+  },
+  {
+    name: "hsk-04",
+    label: "HSK Level 4",
+    priority: 4,
+    content: "/data/kanji-lists/hsk-04.csv",
+  },
+  {
+    name: "hsk-05",
+    label: "HSK Level 5",
     priority: 5,
-    content: "/data/kanji-lists/jlpt-n5.csv",
+    content: "/data/kanji-lists/hsk-05.csv",
   },
   {
-    name: "jlpt-n4",
-    label: "JLPT N4",
-    priority: 20,
-    content: "/data/kanji-lists/jlpt-n4.csv",
+    name: "hsk-06",
+    label: "HSK Level 6",
+    priority: 6,
+    content: "/data/kanji-lists/hsk-06.csv",
   },
   {
-    name: "jlpt-n3",
-    label: "JLPT N3",
-    priority: 40,
-    content: "/data/kanji-lists/jlpt-n3.csv",
-  },
-  {
-    name: "jlpt-n2",
-    label: "JLPT N2",
-    priority: 60,
-    content: "/data/kanji-lists/jlpt-n2.csv",
-  },
-  {
-    name: "jlpt-n1",
-    label: "JLPT N1",
-    priority: 100,
-    content: "/data/kanji-lists/jlpt-n1.csv",
+    name: "hsk-07-09",
+    label: "HSK Levels 7–9",
+    priority: 7,
+    content: "/data/kanji-lists/hsk-07-09.csv",
   },
 ];
 
-export const newsFrequencyDecks = [
+// Liste di frequenza (immutate)
+export const frequencyDecks = [
   {
     name: "news-top-50",
     label: "Top 50",
@@ -92,63 +102,9 @@ export const newsFrequencyDecks = [
   },
 ];
 
-export const genkiDecks = Array.from({ length: 21 }, (_, i) => ({
-  name: `genki-${(i + 3).toString().padStart(2, "0")}`,
-  label: `Leasson ${i + 3}`,
-  priority: i + 1,
-  content: `/data/kanji-lists/genki-${(i + 3).toString().padStart(2, "0")}.csv`,
-}));
-
-export const basicKanjiDecks = Array.from({ length: 45 }, (_, i) => ({
-  name: `basic-kanji-${(i + 1).toString().padStart(2, "0")}`,
-  label: `Chapter ${i + 1}`,
-  priority: i + 1,
-  content: `/data/kanji-lists/basic-kanji-${(i + 1)
-    .toString()
-    .padStart(2, "0")}.csv`,
-}));
-
-export const jouyouDecks = [
-  {
-    name: "jouyou-grade-01",
-    label: "Grade 1",
-    priority: 5,
-    content: "/data/kanji-lists/jouyou-grade-01.csv",
-  },
-  {
-    name: "jouyou-grade-02",
-    label: "Grade 2",
-    priority: 15,
-    content: "/data/kanji-lists/jouyou-grade-02.csv",
-  },
-  {
-    name: "jouyou-grade-03",
-    label: "Grade 3",
-    priority: 25,
-    content: "/data/kanji-lists/jouyou-grade-03.csv",
-  },
-  {
-    name: "jouyou-grade-04",
-    label: "Grade 4",
-    priority: 35,
-    content: "/data/kanji-lists/jouyou-grade-04.csv",
-  },
-  {
-    name: "jouyou-grade-05",
-    label: "Grade 5",
-    priority: 45,
-    content: "/data/kanji-lists/jouyou-grade-05.csv",
-  },
-  {
-    name: "jouyou-grade-06",
-    label: "Grade 6",
-    priority: 55,
-    content: "/data/kanji-lists/jouyou-grade-06.csv",
-  },
-  {
-    name: "jouyou-grade-s",
-    label: "Grade 7-9",
-    priority: 100,
-    content: "/data/kanji-lists/jouyou-grade-s.csv",
-  },
-];
+// Per retrocompatibilità con DeckBrowser
+export const jlptDecks = [];
+export const newsFrequencyDecks = frequencyDecks;
+export const genkiDecks = [];
+export const basicKanjiDecks = [];
+export const jouyouDecks = [];

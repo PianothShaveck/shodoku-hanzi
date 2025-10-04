@@ -109,9 +109,10 @@ function handleRate(next: RecordLogItem): void {
       </template>
     </div>
 
-    <KanjiComponents
+        <KanjiComponents
       v-if="isRating || (card.cardType === 'kanji-write' && isNewCard)"
       class="components"
+      :literal="kanji.literal"
     />
 
     <KanjiWordList

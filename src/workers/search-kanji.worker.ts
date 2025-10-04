@@ -1,4 +1,4 @@
-import { hasKanaOrKanji, hasKanji, toKatakana } from "../helpers/text.ts";
+import { hasKanji } from "../helpers/text.ts";
 
 const LIMIT = 6;
 
@@ -6,9 +6,7 @@ const UNIT_SEP = "\u{241f}";
 const RECORD_SEP = "\u{241e}";
 const GROUP_SEP = "\u{241d}";
 
-const fetchingIndex = fetch("/data/index/kanji-v1.usv").then((response) =>
-  response.text(),
-);
+const fetchingIndex = fetch("/data/index/kanji-v1.usv").then((r) => r.text());
 
 export type KanjiSearchResult = {
   id: number;
@@ -18,11 +16,11 @@ export type KanjiSearchResult = {
   meanings: string[];
 };
 
-async function findWords(search: {
-  en?: string;
-  hiragana?: string;
-  katakana?: string;
-}): Promise<KanjiSearchResult[]> {
+function includes(haystack, needle) {
+  return haystack.toLowerCase().includes(needle.toLowerCase());
+}
+
+async function find(search: { pinyin?: string; en?: string }): Promise<KanjiSearchResult[]> {
   const index = await fetchingIndex;
 
   const found: KanjiSearchResult[] = [];
@@ -30,65 +28,58 @@ async function findWords(search: {
   let recordNumber = 0;
   let unitStart = 0;
   let groupStart = 0;
-  let foundInGroup = null;
+  let matchContent: string | null = null;
 
-  for (const char of index) {
-    const len = char.length;
+  for (const ch of index) {
+    const len = ch.length;
 
-    if (char === UNIT_SEP) {
-      if (!foundInGroup) {
+    if (ch === UNIT_SEP) {
+      if (!matchContent) {
+        // records within a group:
+        // 0 literal, 1 kun list, 2 on list, 3 meanings
         let unitContent;
-        let haystack;
-        let needle;
-
-        if (search.hiragana && recordNumber === 1) {
+        if (recordNumber === 1 && search.pinyin) {
           unitContent = index.slice(unitStart + len, i);
-          haystack = unitContent.replaceAll(".", "");
-          needle = search.hiragana;
-        } else if (search.katakana && recordNumber === 2) {
+          if (includes(unitContent.replaceAll(".", " "), search.pinyin)) {
+            matchContent = search.pinyin;
+          }
+        } else if (recordNumber === 2 && search.pinyin) {
           unitContent = index.slice(unitStart + len, i);
-          haystack = unitContent;
-          needle = search.katakana;
-        } else if (search.en && recordNumber === 3) {
+          if (includes(unitContent.replaceAll(".", " "), search.pinyin)) {
+            matchContent = search.pinyin;
+          }
+        } else if (recordNumber === 3 && search.en) {
           unitContent = index.slice(unitStart + len, i);
-          haystack = unitContent.toLowerCase();
-          needle = search.en;
-        }
-
-        if (needle && unitContent && haystack?.includes(needle)) {
-          foundInGroup = unitContent;
+          if (includes(unitContent, search.en)) {
+            matchContent = search.en;
+          }
         }
       }
-
       unitStart = i;
-    } else if (char === RECORD_SEP) {
+    } else if (ch === RECORD_SEP) {
       recordNumber += 1;
-
       unitStart = i;
-    } else if (char === GROUP_SEP) {
-      if (foundInGroup) {
+    } else if (ch === GROUP_SEP) {
+      if (matchContent) {
         const group = index.slice(groupStart + len, i).trim();
-        const [literal, kunYomiRec, onYomiRec, meaningRec] = group.split(
+        const [literal, kunRec, onRec, meaningRec] = group.split(
           `${UNIT_SEP}${RECORD_SEP}`,
         );
         const id = literal.codePointAt(0) ?? -1;
 
         found.push({
           id,
-          match: foundInGroup,
-          kunYomi: kunYomiRec.split(UNIT_SEP),
-          onYomi: onYomiRec.split(UNIT_SEP),
+          match: matchContent,
+          kunYomi: kunRec.split(UNIT_SEP),
+          onYomi: onRec.split(UNIT_SEP),
           meanings: meaningRec.split(UNIT_SEP),
         });
-        foundInGroup = null;
+        matchContent = null;
 
-        if (found.length === LIMIT) {
-          break;
-        }
+        if (found.length === LIMIT) break;
       }
 
       recordNumber = 0;
-
       unitStart = i;
       groupStart = i;
     }
@@ -100,22 +91,27 @@ async function findWords(search: {
 }
 
 addEventListener("message", async (event: MessageEvent<string>) => {
-  const { data: phrase } = event;
+  const phrase = event.data.trim();
+  if (!phrase) return;
+
+  let results: KanjiSearchResult[] = [];
 
   if (hasKanji(phrase)) {
-    return [];
-  }
-
-  let found;
-
-  if (hasKanaOrKanji(phrase)) {
-    found = await findWords({
-      hiragana: phrase,
-      katakana: toKatakana(phrase),
-    });
+    // nothing to do; the literal itself shows in dictionary results
+    results = [];
+  } else if (/^[a-zA-Z0-9\s:;'`,.-]+$/.test(phrase)) {
+    // likely pinyin or English; search pinyin first, then English
+    results = await find({ pinyin: phrase });
+    if (results.length < LIMIT) {
+      const extra = await find({ en: phrase });
+      // de-dup
+      const seen = new Set(results.map((r) => r.id));
+      for (const e of extra) if (!seen.has(e.id)) results.push(e);
+    }
   } else {
-    found = await findWords({ en: phrase.toLowerCase() });
+    // default to English meanings
+    results = await find({ en: phrase });
   }
 
-  self.postMessage(found);
+  self.postMessage(results);
 });

@@ -17,13 +17,9 @@ const componentPickerExpanded = ref(false);
 
 const searchPhrase = computed<string>({
   get() {
-    if (typeof route.query.search !== "string") {
-      return "";
-    }
-
+    if (typeof route.query.search !== "string") return "";
     return route.query.search;
   },
-
   set(value: string) {
     router.replace({ query: { search: value || undefined } });
   },
@@ -40,7 +36,7 @@ const searchPhrase = computed<string>({
       v-model="searchPhrase"
       type="search"
       aria-label="search"
-      placeholder="Search for words, kanji, meanings, etc."
+      placeholder="Search for words, characters, meanings, etc."
     />
 
     <AppButton
@@ -78,38 +74,20 @@ const searchPhrase = computed<string>({
   border-radius: 3px;
   display: flex;
   padding: 0.5ex 1ex;
-
-  & input {
-    background: var(--background-strong);
-    border: 0;
-    margin: 0;
-    padding: 0;
-    flex-grow: 1;
-    font-family: inherit;
-    font-size: 1.2em;
-
-    &:focus {
-      outline: none;
-    }
-  }
-
-  &::placeholder,
-  & .icon {
-    color: var(--text-light);
-  }
-
-  &:focus-within {
-    outline: 1px solid var(--accent-color);
-
-    & .icon {
-      color: var(--accent-color);
-    }
-  }
 }
-
-.bookmark-results,
-.kanji-results,
-.word-results {
-  margin-block: 2em;
+.search-field input {
+  background: var(--background-strong);
+  border: 0;
+  margin: 0;
+  padding: 0;
+  flex-grow: 1;
+  font-family: inherit;
+  font-size: 1.2em;
 }
+.search-field input:focus { outline: none; }
+::placeholder, .icon { color: var(--text-light); }
+.search-field:focus-within { outline: 1px solid var(--accent-color); }
+.search-field:focus-within .icon { color: var(--accent-color); }
+
+.bookmark-results, .kanji-results, .word-results { margin-block: 2em; }
 </style>

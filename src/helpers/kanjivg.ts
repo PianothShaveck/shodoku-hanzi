@@ -16,76 +16,64 @@ import { KanjiComponent } from "../types.ts";
 type KanjiVGStore = {
   strokesEl: Ref<SVGGElement | null>;
   viewBox: Ref<string | null>;
-  components: ComputedRef<Map<string, KanjiComponent>>;
+  components: ComputedRef<Map<string, KanjiComponent[]>>;
   syncing: Ref<boolean>;
 };
 
-const KANJIVG_NAMESPACE = "http://kanjivg.tagaini.net";
 const KANJIVG_KEY: InjectionKey<KanjiVGStore> = Symbol("kanjivg");
-
-const RADICAL_TYPES = ["general", "tradit", "nelson"];
 
 const parser = new DOMParser();
 
-function gatherPositions(el: SVGElement): string[] {
-  const positions = [];
-
-  let ancestor = el.closest("[data-position]");
-  while (ancestor instanceof SVGElement) {
-    positions.push(ancestor.dataset.position as string);
-    ancestor = ancestor.parentElement?.closest("[data-position]") ?? null;
-  }
-
-  return positions;
+function hexOf(h: string | null): string | null {
+  if (!h) return null;
+  return h.toLowerCase();
 }
 
 export function provideKanjiVG(hex: MaybeRefOrGetter<string | null>) {
   const strokesEl = ref<SVGGElement | null>(null);
-  const viewBox = ref<string | null>(null);
+  const viewBox = ref<string | null>("0,0,1024,1024");
   const syncing = ref(false);
+
+  // cache for components json
+  const compInfo = ref<{ literal: string; kanji: Record<number, string[]> } | null>(
+    null,
+  );
 
   watch(
     () => toValue(hex),
-    async (hexValue) => {
-      if (!hexValue) {
-        return;
-      }
+    async (value) => {
+      const hv = hexOf(value);
+      if (!hv) return;
 
       syncing.value = true;
-
       try {
-        const response = await fetch(`/kanjivg/kanji/${hexValue}.svg`);
-        const svgText = await response.text();
-        const svg = parser.parseFromString(svgText, "image/svg+xml");
-
-        if (svg.documentElement instanceof SVGSVGElement) {
-          const { x, y, width, height } = svg.documentElement.viewBox.baseVal;
-
-          viewBox.value = `${x},${y},${width},${height}`;
+        // 1) Fetch the stroke SVG we generated from Make Me A Hanzi
+        const svgText = await fetch(`/kanjivg/kanji/${hv}.svg`).then((r) =>
+          r.text(),
+        );
+        const doc = parser.parseFromString(svgText, "image/svg+xml");
+        const g = doc.getElementById(`kvg:${hv}`) as SVGGElement | null;
+        // Fallback: if no id, take the first g
+        strokesEl.value =
+          g ??
+          (doc.querySelector("g") as SVGGElement | null) ??
+          (doc.documentElement as unknown as SVGGElement);
+        const vb = doc.documentElement.viewBox?.baseVal;
+        if (vb) {
+          viewBox.value = `${vb.x},${vb.y},${vb.width},${vb.height}`;
+        } else {
+          viewBox.value = "0,0,1024,1024";
         }
 
-        const strokes = svg.getElementById(
-          `kvg:${hexValue}`,
-        ) as SVGGElement | null;
-
-        if (strokes) {
-          for (const el of [...strokes.querySelectorAll("*"), strokes]) {
-            if (!(el instanceof SVGElement)) {
-              continue;
-            }
-
-            for (const attr of [...el.attributes]) {
-              if (attr.namespaceURI === KANJIVG_NAMESPACE) {
-                el.dataset[attr.localName] = attr.value;
-                el.removeAttributeNS(KANJIVG_NAMESPACE, attr.localName);
-              }
-            }
-
-            el.removeAttribute("xmlns:kvg");
-          }
+        // 2) Component info (precomputed JSON) for the picker & component view
+        const compUrl = `/data/components-v1/${hv}.json`;
+        try {
+          compInfo.value = await fetch(compUrl).then((r) =>
+            r.ok ? r.json() : null,
+          );
+        } catch {
+          compInfo.value = null;
         }
-
-        strokesEl.value = strokes;
       } finally {
         syncing.value = false;
       }
@@ -94,83 +82,24 @@ export function provideKanjiVG(hex: MaybeRefOrGetter<string | null>) {
   );
 
   const components = computed(() => {
-    const group = strokesEl.value;
-
-    if (!group) {
-      return new Map();
-    }
-
+    // The original component API grouped by literal and duplicates/variations.
+    // We don’t have per-part groupings in our SVG; instead, we expose a simple map
+    // with one entry containing a single KanjiComponent describing the “component” itself
+    // and leave the UI to use our /components-v1 files for related lists.
     const map = new Map<string, KanjiComponent[]>();
-    const radicals: Record<string, string> = {};
-
-    function insertComponent(el: SVGGElement) {
-      if (el.dataset.part && Number.parseInt(el.dataset.part) > 1) {
-        return;
-      }
-
-      const literal = el.dataset.element as string;
-      const info = {
-        element: literal,
-        original: el.dataset.original ?? null,
-        position: gatherPositions(el),
-        radical: el.dataset.radical ?? null,
-        phon: el.dataset.phon ?? null,
-      };
-
-      let found = map.get(literal);
-      if (!found) {
-        found = [info];
-        map.set(literal, found);
-      } else {
-        found.push(info);
-      }
-
-      if (info.radical) {
-        radicals[info.radical] = literal;
-      }
+    if (compInfo.value?.literal) {
+      const lit = compInfo.value.literal;
+      map.set(lit, [
+        {
+          element: lit,
+          original: null,
+          position: [],
+          radical: null,
+          phon: null,
+        },
+      ]);
     }
-
-    if (group.dataset.radical) {
-      insertComponent(group);
-    }
-
-    for (const el of group.querySelectorAll<SVGGElement>("g[data-element]")) {
-      insertComponent(el);
-    }
-
-    const sorted = new Map<string, KanjiComponent[]>();
-    for (const type of RADICAL_TYPES) {
-      const literal = radicals[type];
-      const component = map.get(literal);
-      if (component) {
-        component.sort((a, b) => {
-          if (a.radical) {
-            if (b.radical) {
-              return (
-                RADICAL_TYPES.indexOf(a.radical) -
-                RADICAL_TYPES.indexOf(b.radical)
-              );
-            }
-
-            return -1;
-          }
-          if (b.radical) {
-            return -1;
-          }
-
-          return 0;
-        });
-
-        sorted.set(literal, component);
-        map.delete(literal);
-      }
-    }
-
-    for (const [literal, component] of map) {
-      sorted.set(literal, component);
-    }
-
-    return sorted;
+    return map;
   });
 
   provide(KANJIVG_KEY, { strokesEl, viewBox, components, syncing });
@@ -178,30 +107,23 @@ export function provideKanjiVG(hex: MaybeRefOrGetter<string | null>) {
 
 export function useKanjiVG(): ComputedRef<SVGGElement | null> {
   const store = inject(KANJIVG_KEY, null);
-
   return computed(() => {
     const clone = store?.strokesEl.value?.cloneNode(true) as SVGGElement | null;
-
     return clone ?? null;
   });
 }
 
 export function useKanjiVGViewBox(): ComputedRef<string> {
   const store = inject(KANJIVG_KEY, null);
-
-  return computed(() => store?.viewBox.value ?? "0,0,109,109");
+  return computed(() => store?.viewBox.value ?? "0,0,1024,1024");
 }
 
-export function useKanjiVGComponents(): ComputedRef<
-  Map<string, KanjiComponent[]>
-> {
+export function useKanjiVGComponents(): ComputedRef<Map<string, KanjiComponent[]>> {
   const store = inject(KANJIVG_KEY, null);
-
   return computed(() => store?.components.value ?? new Map());
 }
 
 export function useKanjiVGSyncing(): ComputedRef<boolean> {
   const store = inject(KANJIVG_KEY, null);
-
   return computed(() => store?.syncing.value ?? false);
 }

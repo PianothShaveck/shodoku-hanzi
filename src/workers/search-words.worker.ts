@@ -1,4 +1,4 @@
-import { hasKanaOrKanji, hasKanji } from "../helpers/text.ts";
+import { hasKanji } from "../helpers/text.ts";
 
 const LIMIT = 20;
 
@@ -6,17 +6,11 @@ const UNIT_SEP = "\u{241f}";
 const RECORD_SEP = "\u{241e}";
 const GROUP_SEP = "\u{241d}";
 
-const fetchingIndex = fetch("/data/index/words-v1.usv").then((response) =>
-  response.text(),
-);
+const fetchingIndex = fetch("/data/index/words-v1.usv").then((r) => r.text());
 
 function isInParams(heystack: string, needle: string): boolean {
   const openParam = heystack.indexOf("(");
-
-  if (openParam === -1) {
-    return false;
-  }
-
+  if (openParam === -1) return false;
   return heystack.indexOf(needle) > openParam;
 }
 
@@ -45,10 +39,10 @@ async function findWords(search: {
   let groupStart = 0;
   let matchContent = null;
 
-  for (const char of index) {
-    const len = char.length;
+  for (const ch of index) {
+    const len = ch.length;
 
-    if (char === UNIT_SEP) {
+    if (ch === UNIT_SEP) {
       if (!matchContent) {
         let unitContent;
         let haystack;
@@ -71,7 +65,7 @@ async function findWords(search: {
         if (
           needle &&
           unitContent &&
-          haystack?.includes(needle) &&
+          haystack?.toLowerCase().includes(needle.toLowerCase()) &&
           !(search.glossary && isInParams(haystack, needle))
         ) {
           matchContent = unitContent;
@@ -79,17 +73,16 @@ async function findWords(search: {
       }
 
       unitStart = i + len;
-    } else if (char === RECORD_SEP) {
+    } else if (ch === RECORD_SEP) {
       record += 1;
-
       unitStart = i + len;
-    } else if (char === GROUP_SEP) {
+    } else if (ch === GROUP_SEP) {
       if (matchContent) {
         const group = index.slice(groupStart, i).trim();
         const [idStr, readingRec, writingRec, glossaryRec] = group.split(
           `${UNIT_SEP}${RECORD_SEP}`,
         );
-        const id = Number.parseInt(idStr);
+        const id = Number.parseInt(idStr, 10);
 
         const result: WordSearchResult = {
           id,
@@ -105,13 +98,10 @@ async function findWords(search: {
         foundCount += 1;
         matchContent = null;
 
-        if (foundCount === LIMIT) {
-          break;
-        }
+        if (foundCount === LIMIT) break;
       }
 
       record = 0;
-
       unitStart = i + len;
       groupStart = i + len;
     }
@@ -121,11 +111,12 @@ async function findWords(search: {
 }
 
 addEventListener("message", async (event: MessageEvent<string>) => {
-  const { data: phrase } = event;
+  const phrase = event.data.trim();
+  if (!phrase) return;
 
-  const searchWriting = hasKanji(phrase);
-  const searchReading = !searchWriting && hasKanaOrKanji(phrase);
-  const searchGlossary = !searchWriting && !searchReading;
+  const searchWriting = hasKanji(phrase);              // 汉字
+  const searchReading = /^[a-zA-Z0-9\s:;'`,.-]+$/.test(phrase); // pinyin-ish
+  const searchGlossary = !searchWriting && !searchReading;       // English
 
   findWords({
     phrase,

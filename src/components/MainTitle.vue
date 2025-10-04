@@ -4,7 +4,7 @@ import { homeRoute } from "../router.ts";
 
 <template>
   <RouterLink :to="homeRoute" class="main-title">
-    <strong class="kanji" lang="ja">書読</strong>
+    <strong class="kanji" lang="zh">书读</strong>
     <h1 class="romaji">shodoku</h1>
   </RouterLink>
 </template>

@@ -10,68 +10,52 @@ await fs.mkdir(new URL("../public/data/kanji-vocab-v1", import.meta.url), {
 const db = new Database(fileURLToPath(import.meta.resolve("../assets.db")));
 db.pragma("journal_mode = WAL");
 
+// Prende tutte le coppie (kanji.literal -> lista di word id) senza dipendere da word_lists.
+// Ordina per priorità di frequenza (word_priority.freq se esiste), altrimenti per scrittura.
 const selectKanji = db.prepare(`
+  SELECT codepoint, literal FROM kanji
+`);
+
+// Trova tutte le parole che contengono il carattere nella scrittura
+const selectWordsForChar = db.prepare(`
   SELECT
-    codepoint,
-    literal,
-    (
-      SELECT
-        json_group_array(
-          DISTINCT word_writings.word
-          ORDER BY
-            (
-              SELECT min(priority)
-              FROM word_lists
-              WHERE
-                word_lists.name in (
-                  SELECT list
-                  FROM word_list_words
-                  WHERE word_list_words.writing = word_writings.text
-                )
-            ) ASC NULLS LAST,
-            word_priority.freq ASC NULLS LAST,
-            min(word_priority.ichi, word_priority.news, word_priority.spec) ASC NULLS LAST,
-            word_writings.text ASC
-        )
-      FROM
-        word_writings
-      INNER JOIN word_priority
-        ON word_priority.word = word_writings.word
-        AND word_priority.writing = word_writings.text
-      WHERE
-        instr(word_writings.text, kanji.literal)
-        AND word_writings.ateji = 0
-        AND word_writings.irregular = 0
-        AND word_writings.rare = 0
-        AND word_writings.outdated = 0
-        AND word_writings.search_only = 0
-        AND (
-          SELECT min(coalesce(kana_preferred, 0))
-          FROM word_meanings
-          WHERE word_meanings.word = word_writings.word
-        ) = 0
-    ) as words
-  FROM kanji
+    ww.word AS word,
+    MIN(COALESCE(wp.freq, 2147483647)) AS rank,
+    MIN(ww.text) AS any_writing
+  FROM word_writings ww
+  LEFT JOIN word_priority wp
+    ON wp.word = ww.word AND wp.writing = ww.text
+  WHERE instr(ww.text, ?) > 0
+    AND COALESCE(ww.search_only, 0) = 0
+  GROUP BY ww.word
+  ORDER BY rank ASC, any_writing ASC
 `);
 
 let i = 0;
 for (const row of selectKanji.iterate()) {
-  const hex = row.codepoint.toString(16).padStart(5, "0");
+  const { codepoint, literal } = row;
+
+  const words = [];
+  for (const rec of selectWordsForChar.iterate(literal)) {
+    words.push(rec.word);
+  }
+
+  const hex = codepoint.toString(16).padStart(5, "0");
   const fileURL = new URL(
     `../public/data/kanji-vocab-v1/${hex}.json`,
     import.meta.url,
   );
 
   const data = {
-    codepoint: row.codepoint,
-    literal: row.literal,
-    words: JSON.parse(row.words),
+    codepoint,
+    literal,
+    words,
   };
 
-  fs.writeFile(fileURL, JSON.stringify(data));
+  await fs.writeFile(fileURL, JSON.stringify(data));
 
   i += 1;
-  if (i % 100 === 0) {
+  if (i % 200 === 0) {
     // eslint-disable-next-line no-console
     console.log(i, fileURL.pathname);
   }

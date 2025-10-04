@@ -1,274 +1,121 @@
 <script setup lang="ts">
-import { computed, watchEffect } from "vue";
-
-import { useKanjiComponent } from "../helpers/kanji-components.ts";
-import { useKanjiVG, useKanjiVGViewBox } from "../helpers/kanjivg.ts";
+import { onMounted, ref, watch } from "vue";
 import { kanjiComponentRoute } from "../router.ts";
-import { KanjiComponent } from "../types.ts";
-import KanjiStrokesGroup from "./KanjiStrokesGroup.vue";
+import type { KanjiComponent } from "../types.ts";
 
 const props = defineProps<{
   literal: string;
   original?: string | null;
-  parts: KanjiComponent[];
+  parts?: KanjiComponent[];
 }>();
 
-const kanjiVG = useKanjiVG();
-const viewBox = useKanjiVGViewBox();
+const svgEl = ref<SVGSVGElement | null>(null);
+const groupContainer = ref<SVGGElement | null>(null);
+const hasStrokes = ref(false);
+const viewBox = ref("0,0,1024,1024");
 
-const radical = computed(() => {
-  for (const part of props.parts) {
-    if (part.radical) {
-      return part.radical;
+async function loadSvg(char: string) {
+  hasStrokes.value = false;
+  const cp = [...char][0].codePointAt(0) ?? 0;
+  const hex = cp.toString(16).padStart(5, "0");
+  const url = `/kanjivg/kanji/${hex}.svg`;
+
+  try {
+    const svgText = await fetch(url).then((r) => (r.ok ? r.text() : ""));
+    if (!svgText) {
+      hasStrokes.value = false;
+      groupContainer.value?.replaceChildren();
+      return;
     }
-  }
 
-  return null;
-});
+    const parser = new DOMParser();
+    const doc = parser.parseFromString(svgText, "image/svg+xml");
 
-const phonetic = computed(() => {
-  for (const part of props.parts) {
-    if (part.phon) {
-      return part.phon;
-    }
-  }
-
-  return null;
-});
-
-const componentInfo = useKanjiComponent(() => props.literal);
-const original = computed(() => props.parts.at(0)?.original);
-const originalComponentInfo = useKanjiComponent(original);
-
-const meaning = computed(
-  () =>
-    originalComponentInfo.value?.radical?.en ??
-    originalComponentInfo.value?.meaning ??
-    componentInfo.value?.radical?.en ??
-    componentInfo?.value?.meaning,
-);
-
-const reading = computed(
-  () =>
-    originalComponentInfo.value?.radical?.jp ??
-    originalComponentInfo.value?.reading ??
-    componentInfo.value?.radical?.jp ??
-    componentInfo?.value?.reading,
-);
-
-const radicalNumber = computed(
-  () =>
-    originalComponentInfo.value?.radical?.number ??
-    componentInfo.value?.radical?.number,
-);
-
-const isCDPCodePoint = computed(() => props.literal.startsWith("CDP-"));
-
-// These are exceptions from the kanjivg dataset. These are using the
-// characters from the radical unicode block instead of the CJK
-// codeblock as is usual. In these cases, the whole character is the
-// only one denoted with the CJK block while the parts are all from
-// the radical block.
-//
-// See: https://kanjivg.tagaini.net/radicals.html#other-radicals
-const rogueCJKRadicalPairs = [
-  ["\u{5f50}", "\u{2e95}"],
-  ["\u{72ad}", "\u{2ea8}"],
-  ["\u{961d}", "\u{2ed6}"],
-];
-function replaceCJKRadical(literal: string): string {
-  for (const [cjkBlock, radicalBlock] of rogueCJKRadicalPairs) {
-    if (literal === cjkBlock) {
-      return radicalBlock;
-    }
-  }
-
-  return literal;
-}
-
-function accentColorOffset(deg: number): string {
-  return `oklch(from var(--accent-color) l c ${deg + 3})`;
-}
-
-watchEffect(() => {
-  const strokes = kanjiVG.value;
-
-  if (!strokes) {
-    return;
-  }
-
-  if (
-    strokes.dataset.element === props.literal &&
-    (!props.original || props.original === strokes.dataset.original)
-  ) {
-    if (
-      strokes.dataset.radical === "general" ||
-      strokes.dataset.radical === "tradit"
-    ) {
-      strokes.style.color = "var(--green)";
-    } else if (
-      strokes.dataset.radical === "nelson" ||
-      strokes.dataset.radical === "jis"
-    ) {
-      strokes.style.color = "var(--bluegreen)";
-    } else if (strokes.dataset.phon === props.literal) {
-      strokes.style.color = "var(--gold)";
+    // Cast the root <svg> to SVGSVGElement to read viewBox without TS errors
+    const svgRoot = doc.documentElement as unknown as SVGSVGElement;
+    const vb = svgRoot.viewBox?.baseVal;
+    if (vb) {
+      viewBox.value = `${vb.x},${vb.y},${vb.width},${vb.height}`;
     } else {
-      strokes.style.color = accentColorOffset(180);
+      viewBox.value = "0,0,1024,1024";
     }
+
+    // Our builder puts the main strokes in the first <g>
+    const g = svgRoot.querySelector("g") as SVGGElement | null;
+    if (!g) {
+      hasStrokes.value = false;
+      groupContainer.value?.replaceChildren();
+      return;
+    }
+
+    hasStrokes.value = true;
+    const clone = g.cloneNode(true) as SVGGElement;
+    groupContainer.value?.replaceChildren(clone);
+  } catch {
+    hasStrokes.value = false;
+    groupContainer.value?.replaceChildren();
   }
+}
 
-  let i = -1;
-  for (const group of strokes.querySelectorAll<SVGGElement>(
-    `g[data-element="${props.literal}"]`,
-  )) {
-    if (props.original && props.original !== group.dataset.original) {
-      continue;
-    }
-
-    if (
-      group.dataset.radical === "general" ||
-      group.dataset.radical === "tradit"
-    ) {
-      group.style.color = "var(--green)";
-      continue;
-    }
-
-    if (group.dataset.radical === "nelson" || group.dataset.radical === "jis") {
-      group.style.color = "var(--bluegreen)";
-      continue;
-    }
-
-    if (group.dataset.phon) {
-      group.style.color = "var(--gold)";
-      continue;
-    }
-
-    if (!group.dataset.part || group.dataset.part === "1") {
-      i += 1;
-    }
-
-    group.style.color = accentColorOffset(240 + 63 * i);
-  }
-});
+watch(
+  () => props.literal,
+  (ch) => ch && loadSvg(ch),
+  { immediate: true },
+);
+onMounted(() => props.literal && loadSvg(props.literal));
 </script>
 
 <template>
-  <RouterLink
-    :to="kanjiComponentRoute(replaceCJKRadical(literal))"
-    class="kanji-component-item"
-  >
-    <svg v-if="kanjiVG" :viewBox="viewBox" class="kanji-component-strokes">
-      <KanjiStrokesGroup class="strokes-group" :strokes="kanjiVG" />
+  <RouterLink :to="kanjiComponentRoute(literal)" class="component-item">
+    <svg v-if="hasStrokes" ref="svgEl" :viewBox="viewBox" class="mini">
+      <g ref="groupContainer" class="mini-strokes" />
     </svg>
-
-    <div class="component-info">
-      <span v-if="!isCDPCodePoint" class="literal">{{ literal }}</span>
-
-      <p class="meaning">
-        <strong>{{ meaning }}</strong>
-        <span v-if="original" class="original" lang="ja"> {{ original }}</span>
-        <span v-if="reading" lang="ja"> ({{ reading }})</span>
-      </p>
-
-      <div class="tags">
-        <span
-          v-if="radical"
-          class="is-radical"
-          :class="{
-            'is-nelson': radical === 'nelson',
-            'is-jis': radical === 'jis',
-          }"
-        >
-          <template v-if="radical === 'nelson'">Nelson radical</template>
-          <template v-else-if="radical === 'jis'">JIS radical</template>
-          <template v-else>Radical</template>
-
-          <template v-if="radicalNumber">&nbsp;{{ radicalNumber }}</template>
-        </span>
-
-        <span v-if="phonetic" class="is-phonetic">Phonetic</span>
-      </div>
+    <div v-else class="mini mini-fallback">
+      <span class="text">{{ literal }}</span>
     </div>
+
+    <span class="label">{{ literal }}</span>
   </RouterLink>
 </template>
 
 <style scoped>
-.kanji-component-item {
-  color: inherit;
-  column-gap: 1em;
-  display: flex;
+.component-item {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.6rem;
   text-decoration: none;
+  color: inherit;
 }
 
-.kanji-component-strokes {
+.mini {
   background: var(--background-strong);
-  block-size: 5em;
-  border-radius: 1ex;
+  width: 2.8rem;
+  height: 2.8rem;
+  border-radius: 6px;
+  display: inline-block;
   flex-shrink: 0;
-
-  & .strokes-group {
-    color: light-dark(var(--light-gray), var(--medium-dark-gray));
-  }
 }
 
-.component-info {
-  align-items: start;
-  align-self: center;
-  column-gap: 1em;
-  display: grid;
-  grid-template:
-    "literal tags" min-content
-    "literal meaning" 1fr;
-  justify-content: start;
+.mini-strokes :deep(path) {
+  stroke: #fff;
+  stroke-width: 2px;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+  fill: none;
 }
 
-.literal {
-  font-size: 3em;
-  font-weight: normal;
-  grid-area: literal;
-  line-height: 1em;
+.mini-fallback {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
 }
 
-.meaning {
-  grid-area: meaning;
-  margin: 0;
-
-  & strong {
-    text-transform: capitalize;
-  }
-
-  & .original {
-    padding-inline-start: 1ex;
-  }
+.mini-fallback .text {
+  font-size: 1.6rem;
+  line-height: 1;
 }
 
-.tags {
-  column-gap: 0.5ex;
-  display: flex;
-  grid-area: tags;
-}
-
-.is-radical,
-.is-phonetic {
-  border-radius: 1ex;
-  color: var(--background-strong);
-  font-size: 0.6em;
-  font-weight: 600;
-  padding: 0.5ex 1ex;
-  justify-self: start;
-}
-
-.is-radical {
-  background: var(--green);
-
-  &.is-nelson,
-  &.is-jis {
-    background-color: var(--bluegreen);
-  }
-}
-
-.is-phonetic {
-  background: var(--gold);
+.label {
+  font-size: 1.2rem;
 }
 </style>

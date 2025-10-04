@@ -42,6 +42,10 @@ export function useWordSetenceIds(
       }
 
       const response = await fetch(`/data/words-sentences-v1/${id}.json`);
+      if (!response.ok) {
+        sentenceIds.value = [];
+        return;
+      }
       const data = await response.json();
 
       sentenceIds.value = data;

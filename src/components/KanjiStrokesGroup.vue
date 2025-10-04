@@ -1,10 +1,7 @@
 <script setup lang="ts">
 import { onMounted, ref, watch } from "vue";
 
-const props = defineProps<{
-  strokes: SVGGElement;
-}>();
-
+const props = defineProps<{ strokes: SVGGElement }>();
 const container = ref<SVGGElement | null>(null);
 
 function render() {
@@ -12,10 +9,7 @@ function render() {
 }
 
 watch(() => props.strokes, render);
-
-onMounted(() => {
-  render();
-});
+onMounted(render);
 </script>
 
 <template>
@@ -25,8 +19,8 @@ onMounted(() => {
 <style scoped>
 .kanji-strokes {
   fill: none;
-  stroke: currentcolor;
-  stroke-width: 3px;
+  stroke: #fff;
+  stroke-width: 10px;
   stroke-linecap: round;
   stroke-linejoin: round;
 }

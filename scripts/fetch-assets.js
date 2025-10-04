@@ -2,100 +2,124 @@ import fs from "node:fs";
 import { Readable } from "node:stream";
 import { finished } from "node:stream/promises";
 import { fileURLToPath } from "node:url";
-import zlib from "node:zlib";
+import unzip from "unzip-stream";
 
-import tar from "tar-fs";
-import bz2 from "unbzip2-stream";
-import unzipStream from "unzip-stream";
+const MMHZ_ZIP =
+  "https://github.com/skishore/makemeahanzi/archive/refs/heads/master.zip";
+const CEDICT_ZIP =
+  "https://www.mdbg.net/chinese/export/cedict/cedict_1_0_ts_utf-8_mdbg.zip";
 
-const JMDICT_URL = "http://ftp.edrdg.org/pub/Nihongo/JMdict_e.gz";
-const KANJIDIC2_URL = "http://www.edrdg.org/kanjidic/kanjidic2.xml.gz";
-const KANJIVG_URL =
-  "https://github.com/KanjiVG/kanjivg/releases/download/r20250422/kanjivg-20250422-main.zip";
-const JMDICT_FURIGANA_URL =
-  "https://github.com/Doublevil/JmdictFurigana/releases/download/2.3.1%2B2024-08-25/JmdictFurigana.json.zip";
-const TATOEBA_ENG_URL =
-  "https://downloads.tatoeba.org/exports/per_language/eng/eng_sentences.tsv.bz2";
-const TATOEBA_JPN_URL =
-  "https://downloads.tatoeba.org/exports/per_language/jpn/jpn_sentences.tsv.bz2";
-const TATOEBA_JPN_INDICES_URL =
-  "https://downloads.tatoeba.org/exports/jpn_indices.tar.bz2";
+// Fallback per IDS (CHISE / CJKVI)
+const CJKVI_IDS_RAW =
+  "https://raw.githubusercontent.com/cjkvi/cjkvi-ids/master/ids.txt";
 
-async function download(
-  url,
-  path,
-  { unzip = false, bunzip2 = false, untar = false } = {},
-) {
-  const response = await fetch(url);
-  let stream = Readable.fromWeb(response.body);
+async function download(url, path, { unzipToDir = null } = {}) {
+  const res = await fetch(url);
 
-  if (unzip) {
-    stream = stream.pipe(unzipStream.Extract({ path }));
-  } else if (bunzip2) {
-    stream = stream.pipe(bz2());
+  if (!res.ok || !res.body) {
+    throw new Error(`Failed to download ${url}: ${res.status} ${res.statusText}`);
+  }
 
-    if (untar) {
-      stream = stream.pipe(tar.extract(path));
-    } else {
-      stream = stream.pipe(fs.createWriteStream(path));
-    }
+  let stream = Readable.fromWeb(res.body);
+
+  if (unzipToDir) {
+    stream = stream.pipe(unzip.Extract({ path: unzipToDir }));
   } else {
-    if (response.headers.get("Content-Type") === "application/x-gzip") {
-      stream = stream.pipe(zlib.createGunzip());
-    }
-
     stream = stream.pipe(fs.createWriteStream(path));
   }
-  try {
-    await finished(stream);
+
+  await finished(stream);
+  // eslint-disable-next-line no-console
+  console.log(`Downloaded: ${url}`);
+}
+
+async function fetchToPath(url, outPath) {
+  const res = await fetch(url);
+  if (!res.ok || !res.body) {
+    throw new Error(`Failed to download ${url}: ${res.status} ${res.statusText}`);
+  }
+  await fs.promises.mkdir(fs.promises.dirname ? await fs.promises.dirname(outPath) : outPath.split("/").slice(0, -1).join("/"), { recursive: true }).catch(() => {});
+  const ws = fs.createWriteStream(outPath);
+  await finished(Readable.fromWeb(res.body).pipe(ws));
+  // eslint-disable-next-line no-console
+  console.log(`Downloaded: ${url} -> ${outPath}`);
+}
+
+await download(
+  MMHZ_ZIP,
+  fileURLToPath(import.meta.resolve("../assets/makemeahanzi.zip")),
+  { unzipToDir: fileURLToPath(import.meta.resolve("../assets/makemeahanzi")) },
+);
+
+await download(
+  CEDICT_ZIP,
+  fileURLToPath(import.meta.resolve("../assets/cedict.zip")),
+  { unzipToDir: fileURLToPath(import.meta.resolve("../assets")) },
+);
+
+// Move/normalize CEDICT to cedict_ts.u8
+{
+  const base = fileURLToPath(import.meta.resolve("../assets"));
+  const dir = await fs.promises.readdir(base);
+  const src = dir.find((f) => /^cedict_1_0_ts_utf-8.*\.u8$/.test(f));
+  if (src) {
+    await fs.promises.copyFile(`${base}/${src}`, `${base}/cedict_ts.u8`);
     // eslint-disable-next-line no-console
-    console.log(`Downloaded: ${url} → ${path}`);
-  } catch (error) {
-    // eslint-disable-next-line no-console
-    console.log("failed");
-    // eslint-disable-next-line no-console
-    console.error(error);
+    console.log(`CEDICT ready: assets/cedict_ts.u8`);
   }
 }
 
-await Promise.all([
-  download(
-    JMDICT_URL,
-    fileURLToPath(import.meta.resolve("../assets/JMdict_e.xml")),
-  ),
+// Verifica file Make Me A Hanzi (graphics.txt, dictionary.txt, ids.txt).
+// In alcuni ZIP sono in radice, in altri in data/. Se ids.txt manca,
+// lo scarichiamo da CJKVI e lo salviamo accanto agli altri.
+{
+  const mdir = fileURLToPath(import.meta.resolve("../assets/makemeahanzi"));
+  const root = (await fs.promises.readdir(mdir)).find((n) =>
+    /^makemeahanzi-/.test(n),
+  );
+  if (!root) {
+    throw new Error("makemeahanzi root not found after unzip");
+  }
+  const base = `${mdir}/${root}`;
 
-  download(
-    JMDICT_FURIGANA_URL,
-    fileURLToPath(import.meta.resolve("../assets")),
-    { unzip: true },
-  ),
+  async function exists(p) {
+    try {
+      await fs.promises.access(p);
+      return true;
+    } catch {
+      return false;
+    }
+  }
 
-  download(
-    KANJIDIC2_URL,
-    fileURLToPath(import.meta.resolve("../assets/kanjidic2.xml")),
-  ),
+  async function resolveOne(name) {
+    const candidates = [`${base}/${name}`, `${base}/data/${name}`];
+    for (const p of candidates) {
+      if (await exists(p)) {
+        // eslint-disable-next-line no-console
+        console.log(`Found: ${p}`);
+        return p;
+      }
+    }
+    return null;
+  }
 
-  download(
-    KANJIVG_URL,
-    fileURLToPath(import.meta.resolve("../public/kanjivg")),
-    { unzip: true },
-  ),
+  const g = await resolveOne("graphics.txt");
+  if (!g) throw new Error(`Could not find graphics.txt in ${base} or ${base}/data/`);
+  const d = await resolveOne("dictionary.txt");
+  if (!d) throw new Error(`Could not find dictionary.txt in ${base} or ${base}/data/`);
 
-  download(
-    TATOEBA_ENG_URL,
-    fileURLToPath(import.meta.resolve("../assets/eng_sentences.tsv")),
-    { bunzip2: true },
-  ),
-
-  download(
-    TATOEBA_JPN_URL,
-    fileURLToPath(import.meta.resolve("../assets/jpn_sentences.tsv")),
-    { bunzip2: true },
-  ),
-
-  download(
-    TATOEBA_JPN_INDICES_URL,
-    fileURLToPath(import.meta.resolve("../assets")),
-    { bunzip2: true, untar: true },
-  ),
-]);
+  let ids = await resolveOne("ids.txt");
+  if (!ids) {
+    // Fallback: scarica da CJKVI e salva in base/ids.txt
+    const out = `${base}/ids.txt`;
+    await fetchToPath(CJKVI_IDS_RAW, out);
+    if (!(await exists(out))) {
+      throw new Error(`Downloaded ids.txt but cannot access it at ${out}`);
+    }
+    // eslint-disable-next-line no-console
+    console.log(`Using CJKVI ids.txt fallback at: ${out}`);
+  } else {
+    // eslint-disable-next-line no-console
+    console.log(`Found: ${ids}`);
+  }
+}

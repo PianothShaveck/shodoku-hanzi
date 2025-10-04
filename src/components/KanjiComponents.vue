@@ -1,41 +1,124 @@
 <script setup lang="ts">
-import { pipe } from "yta";
-import { groupBy } from "yta/sync";
-
-import { useKanjiVGComponents } from "../helpers/kanjivg.ts";
-import { KanjiComponent } from "../types.ts";
+import { onMounted, ref, watch, computed } from "vue";
+import { useRoute } from "vue-router";
 import KanjiComponentItem from "./KanjiComponentItem.vue";
 
-const components = useKanjiVGComponents();
+const props = defineProps<{
+  literal?: string | null;
+}>();
 
-function originals(
-  parts: KanjiComponent[],
-): Map<string | null, KanjiComponent[]> {
-  return pipe(
-    parts,
-    groupBy((part) => part.original || null),
+// Separators
+const UNIT_SEP = "\u241f";   // ␟
+const RECORD_SEP = "\u241e"; // ␞
+const INDEX_URL = "/data/index/kanji-radicals-v1.usv";
+
+// cache in-memory
+let INDEX_TEXT = "";
+let INDEX_MAP: Map<string, string> | null = null;
+
+const route = useRoute();
+const currentLiteral = computed(() => {
+  if (props.literal && [...props.literal].length === 1) return props.literal;
+  const p = route.params.kanji;
+  if (typeof p === "string" && [...p].length === 1) return p;
+  return null;
+});
+
+const components = ref<string[]>([]);
+
+function isLikelyComponentChar(ch: string): boolean {
+  const cp = ch.codePointAt(0);
+  if (!cp) return false;
+  return (
+    // Han
+    (cp >= 0x4e00 && cp <= 0x9fff) ||
+    (cp >= 0x3400 && cp <= 0x4dbf) ||
+    (cp >= 0x20000 && cp <= 0x2a6df) ||
+    (cp >= 0x2a700 && cp <= 0x2b73f) ||
+    (cp >= 0x2b740 && cp <= 0x2b81f) ||
+    (cp >= 0x2b820 && cp <= 0x2ceaf) ||
+    // radicals supplement
+    (cp >= 0x2e80 && cp <= 0x2eff) ||
+    // kangxi radicals
+    (cp >= 0x2f00 && cp <= 0x2fd5) ||
+    // compatibility ideographs
+    (cp >= 0xf900 && cp <= 0xfaff)
   );
 }
+
+async function loadIndexOnce() {
+  if (INDEX_TEXT) return;
+  const txt = await fetch(INDEX_URL).then((r) => r.text());
+  INDEX_TEXT = txt.replace(/^\uFEFF/, "").replace(/\r/g, "");
+}
+
+function buildIndexMap() {
+  if (INDEX_MAP) return;
+  INDEX_MAP = new Map();
+
+  const lines = INDEX_TEXT.split("\n");
+  for (const line of lines) {
+    if (!line) continue;
+
+    const iUnit = line.indexOf(UNIT_SEP);
+    if (iUnit < 0) continue;
+
+    const lit = line.slice(0, iUnit);
+
+    const iRec1 = line.indexOf(RECORD_SEP, iUnit + 1);
+    if (iRec1 < 0) continue;
+
+    const iRec2 = line.indexOf(RECORD_SEP, iRec1 + 1);
+    if (iRec2 < 0) continue;
+
+    const radicalsJoined = line.slice(iRec1 + 1, iRec2);
+    INDEX_MAP.set(lit, radicalsJoined);
+  }
+}
+
+function refresh() {
+  const lit = currentLiteral.value;
+  if (!lit || !INDEX_MAP) {
+    components.value = [];
+    return;
+  }
+
+  const radJoined = INDEX_MAP.get(lit) ?? "";
+  if (!radJoined) {
+    components.value = [];
+    return;
+  }
+
+  const list: string[] = [];
+  for (const c of radJoined) if (isLikelyComponentChar(c)) list.push(c);
+
+  // unique preserving order
+  const seen = new Set<string>();
+  components.value = list.filter((c) => (seen.has(c) ? false : (seen.add(c), true)));
+}
+
+onMounted(async () => {
+  await loadIndexOnce();
+  buildIndexMap();
+  refresh();
+});
+
+watch(currentLiteral, refresh);
 </script>
 
 <template>
   <section>
     <h2>
       Components
-      <template v-if="components.size > 0"> ({{ components.size }}) </template>
+      <template v-if="components.length > 0"> ({{ components.length }}) </template>
     </h2>
 
-    <ul class="component-list">
-      <template v-for="[literal, partss] of components" :key="literal">
-        <li v-for="[original, parts] of originals(partss)" :key="original ?? 0">
-          <KanjiComponentItem
-            :literal="literal"
-            :parts="parts"
-            :original="original"
-          />
-        </li>
-      </template>
+    <ul class="component-list" v-if="components.length > 0">
+      <li v-for="c in components" :key="c">
+        <KanjiComponentItem :literal="c" :parts="[]" />
+      </li>
     </ul>
+    <p v-else>No components found.</p>
   </section>
 </template>
 

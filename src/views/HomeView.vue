@@ -60,8 +60,7 @@ function continueReview() {
 
     <template v-else-if="deckCount === 0">
       <p>
-        You don’t have any active decks. Click the button below to select a deck
-        and start learning new kanji.
+        You don’t have any active decks. Click the button below to select a deck and start learning new characters.
       </p>
 
       <nav class="home-nav">
