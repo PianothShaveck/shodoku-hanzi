@@ -103,12 +103,12 @@ import { deckBrowserRoute, reviewRoute } from "../router.ts";
       <ul>
         <li>
           Source code (this fork): 
-          <a href="https://github.com/placeholder/shodoku-hanzi" target="_blank" rel="noopener">github.com/placeholder/shodoku-hanzi</a>
+          <a href="https://github.com/pianothshaveck/shodoku-hanzi" target="_blank" rel="noopener">github.com/placeholder/shodoku-hanzi</a>
           <!-- replace with your repository URL -->
         </li>
         <li>
           Issues / feedback:
-          <a href="https://github.com/placeholder/shodoku-hanzi/issues" target="_blank" rel="noopener">open an issue</a>
+          <a href="https://github.com/pianothshaveck/shodoku-hanzi/issues" target="_blank" rel="noopener">open an issue</a>
           <!-- replace with your issues URL -->
         </li>
         <li>
