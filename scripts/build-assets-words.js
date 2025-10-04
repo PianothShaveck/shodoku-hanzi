@@ -1,6 +1,5 @@
 import fs from "node:fs/promises";
 import { fileURLToPath } from "node:url";
-
 import Database from "better-sqlite3";
 
 await fs.mkdir(new URL("../public/data/words-v1", import.meta.url), {
@@ -8,27 +7,28 @@ await fs.mkdir(new URL("../public/data/words-v1", import.meta.url), {
 });
 
 const db = new Database(fileURLToPath(import.meta.resolve("../assets.db")));
+db.pragma("journal_mode = WAL");
 
 function stripNull(obj) {
-  if (typeof obj !== "object") {
+  if (typeof obj !== "object" || obj == null) {
     return obj;
   }
-
+  if (Array.isArray(obj)) {
+    return obj
+      .map(stripNull)
+      .filter(
+        (v) =>
+          v !== null &&
+          v !== false &&
+          v !== "" &&
+          !(Array.isArray(v) && v.length === 0),
+      );
+  }
   return Object.fromEntries(
     Object.entries(obj)
-      .map(([key, child]) => {
-        if (Array.isArray(child)) {
-          return [key, child.map(stripNull)];
-        }
-
-        if (child && typeof child === "object") {
-          return [key, stripNull(child)];
-        }
-
-        return [key, child];
-      })
+      .map(([key, child]) => [key, stripNull(child)])
       .filter(
-        ([_, value]) =>
+        ([, value]) =>
           value !== null &&
           value !== false &&
           value !== "" &&
@@ -138,6 +138,7 @@ const selectWords = db.prepare(`
       FROM (
         SELECT 
           id,
+          word,
           info,
           pos,
           misc,
@@ -173,20 +174,34 @@ const selectWords = db.prepare(`
   FROM words
 `);
 
+let i = 0;
 for (const row of selectWords.iterate()) {
   const path = new URL(
     `../public/data/words-v1/${row.id}.json`,
     import.meta.url,
   );
 
-  fs.writeFile(
+  // parse con fallback sicuro
+  const writings = JSON.parse(row.writings ?? "[]").map(stripNull);
+  const readings = JSON.parse(row.readings ?? "[]").map(stripNull);
+  const furigana = JSON.parse(row.furigana ?? "[]");
+  const meanings = JSON.parse(row.meanings ?? "[]").map(stripNull);
+
+  // scrivi SEQUENZIALMENTE (await)
+  await fs.writeFile(
     path,
     JSON.stringify({
       id: row.id,
-      writings: JSON.parse(row.writings).map(stripNull),
-      readings: JSON.parse(row.readings).map(stripNull),
-      furigana: JSON.parse(row.furigana),
-      meanings: JSON.parse(row.meanings).map(stripNull),
+      writings,
+      readings,
+      furigana,
+      meanings,
     }),
   );
+
+  i += 1;
+  if (i % 5000 === 0) {
+    // eslint-disable-next-line no-console
+    console.log(`words ${i} written...`);
+  }
 }
